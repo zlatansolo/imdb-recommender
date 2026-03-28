@@ -1,0 +1,60 @@
+name: Monthly IMDb Recommendations
+
+on:
+  schedule:
+    # Runs at 09:00 UTC on the 1st of every month
+    - cron: "0 9 1 * *"
+  workflow_dispatch:
+    inputs:
+      skip_fetch:
+        description: "Skip IMDb fetch and use existing ratings.csv (for testing)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  send-recommendations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright + Chromium
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run IMDb Recommender
+        working-directory: src
+        env:
+          IMDB_EMAIL:         ${{ secrets.IMDB_EMAIL }}
+          IMDB_PASSWORD:      ${{ secrets.IMDB_PASSWORD }}
+          GMAIL_ADDRESS:      ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          SKIP_FETCH:         ${{ github.event.inputs.skip_fetch }}
+        run: python main.py
+
+      - name: Upload debug artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-output
+          path: |
+            src/recommendations.json
+            src/ratings.csv
+          retention-days: 3
