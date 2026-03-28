@@ -40,7 +40,7 @@ TASTE PROFILE (from 1,031 personal ratings):
 - Recent 9/10s: The Penguin (2024), Shōgun (2024), Dune: Part Two (2024),
   Project Hail Mary (upcoming — book lover).
 - Dislikes: superhero bloat (rated most MCU/DCEU 5-6), fantasy epics
-  (rated all LOTR films 3-4), overly slow arthouse cinema.
+  (rated all LOTR films 3-4), overly slow arthouse cinema. Horror movies.
 - Appreciates: sharp dialogue, strong character arcs, stylish cinematography,
   dark humour, morally complex protagonists.
 """
