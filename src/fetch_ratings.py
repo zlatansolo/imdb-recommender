@@ -79,39 +79,37 @@ async def _download_top(page, label: str, dest: Path) -> Path:
     """
     Find the first real download link for the given section label and save it.
     """
-    # Dump all buttons to find download buttons
-    all_buttons = await page.evaluate("""() => {
-        return Array.from(document.querySelectorAll('button')).map((b, i) => ({
-            index: i,
-            text: b.textContent.trim().slice(0, 80),
-            type: b.type,
-            disabled: b.disabled,
-            classes: b.className.slice(0, 80)
-        }));
-    }""")
-    print(f"  Buttons on page ({len(all_buttons)} total):")
-    for b in all_buttons:
-        print(f"    [{b['index']}] '{b['text']}' class='{b['classes']}'")
+    # Find the "Ready" button in the same container as the label text
+    btn = await page.evaluate_handle("""(label) => {
+        const lower = label.toLowerCase();
+        // Find leaf text nodes containing the label
+        const leaves = Array.from(document.querySelectorAll('*')).filter(el =>
+            el.children.length === 0 &&
+            !['script','style'].includes(el.tagName.toLowerCase()) &&
+            el.textContent.toLowerCase().includes(lower)
+        );
+        for (const node of leaves) {
+            // Walk up the DOM looking for a container with a "Ready" button
+            let el = node.parentElement;
+            for (let i = 0; i < 10; i++) {
+                if (!el) break;
+                const btn = Array.from(el.querySelectorAll('button')).find(
+                    b => b.textContent.trim() === 'Ready'
+                );
+                if (btn) return btn;
+                el = el.parentElement;
+            }
+        }
+        return null;
+    }""", label)
 
-    # Find button whose text matches label or contains 'download'
-    lower_label = label.lower()
-    target_idx = None
-    for b in all_buttons:
-        text = b['text'].lower()
-        if 'download' in text or lower_label in text:
-            target_idx = b['index']
-            print(f"  Matched button [{target_idx}]: '{b['text']}'")
-            break
+    is_null = await page.evaluate("el => el === null", btn)
+    if is_null:
+        raise RuntimeError(f"Could not find 'Ready' button near '{label}' on the exports page.")
 
-    if target_idx is None:
-        raise RuntimeError(
-            f"No download button found for '{label}'.\n"
-            f"Buttons: {all_buttons}"
-        )
-
-    btn = page.locator("button").nth(target_idx)
+    print(f"  Found 'Ready' button for '{label}'")
     async with page.expect_download(timeout=60000) as dl:
-        await btn.click()
+        await btn.as_element().click()
 
     download = await dl.value
     await download.save_as(dest)
