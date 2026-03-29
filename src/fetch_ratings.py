@@ -120,8 +120,17 @@ async def _download_top(page, label: str, dest: Path) -> Path:
         )
 
     print(f"  Found download element for '{label}'")
-    async with page.expect_download(timeout=60000) as dl:
-        await btn.as_element().click()
+
+    # Get the href directly — if it's an anchor, navigate to it to trigger the download
+    href = await page.evaluate("el => el.href || null", btn)
+    if href:
+        print(f"  Navigating to download URL: {href}")
+        async with page.expect_download(timeout=60000) as dl:
+            await page.goto(href, wait_until="commit")
+    else:
+        # Fall back to force-click for buttons
+        async with page.expect_download(timeout=60000) as dl:
+            await btn.as_element().click(force=True)
 
     download = await dl.value
     await download.save_as(dest)
