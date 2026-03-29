@@ -64,21 +64,37 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
         # ── Download ratings ──────────────────────────────────────────────────
         ratings_path = DATA_DIR / "ratings.csv"
         print("Downloading ratings…")
-        async with page.expect_download(timeout=60000) as dl:
-            await page.goto(RATINGS_EXPORT_URL)
-        await (await dl.value).save_as(ratings_path)
-        print(f"  Saved: {ratings_path} ({ratings_path.stat().st_size:,} bytes)")
+        ratings_path = await _fetch_csv(page, RATINGS_EXPORT_URL, ratings_path)
 
         # ── Download watchlist ────────────────────────────────────────────────
         watchlist_path = DATA_DIR / "watchlist.csv"
         print("Downloading watchlist…")
-        async with page.expect_download(timeout=60000) as dl:
-            await page.goto(WATCHLIST_EXPORT_URL)
-        await (await dl.value).save_as(watchlist_path)
-        print(f"  Saved: {watchlist_path} ({watchlist_path.stat().st_size:,} bytes)")
+        watchlist_path = await _fetch_csv(page, WATCHLIST_EXPORT_URL, watchlist_path)
 
         await browser.close()
         return ratings_path, watchlist_path
+
+
+async def _fetch_csv(page, url: str, dest: Path) -> Path:
+    """Navigate to an IMDb export URL and save the response body as a CSV."""
+    response = await page.goto(url, wait_until="domcontentloaded")
+    if response is None or response.status != 200:
+        status = response.status if response else "no response"
+        raise RuntimeError(f"Export URL returned HTTP {status}: {url}")
+
+    content_type = response.headers.get("content-type", "")
+    body = await response.body()
+
+    # If IMDb redirected to a sign-in page instead of returning CSV
+    if b"ap/signin" in body[:500] or b"<html" in body[:100].lower():
+        raise RuntimeError(
+            "Export URL redirected to sign-in page — cookies may be expired. "
+            "Re-run save_cookies.py and update the IMDB_COOKIES secret."
+        )
+
+    dest.write_bytes(body)
+    print(f"  Saved: {dest} ({dest.stat().st_size:,} bytes, content-type: {content_type})")
+    return dest
 
 
 async def _login(page, email: str, password: str) -> None:
