@@ -63,25 +63,14 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
 
         # ── Navigate to exports page ──────────────────────────────────────────
         print("Navigating to IMDb exports page…")
-        await page.goto("https://www.imdb.com/exports/", wait_until="networkidle")
+        await page.goto("https://www.imdb.com/exports/?ref_=wl", wait_until="networkidle")
 
-        # ── Step 1: Request both exports ──────────────────────────────────────
-        print("Requesting export generation for ratings and watchlist…")
-        await _request_exports(page)
-
-        # ── Step 2: Wait for IMDb to generate the files ───────────────────────
-        wait_minutes = 25
-        print(f"Waiting {wait_minutes} minutes for IMDb to generate exports…")
-        await asyncio.sleep(wait_minutes * 60)
-
-        # ── Step 3: Reload and download ───────────────────────────────────────
-        print("Reloading exports page to download ready files…")
-        await page.goto("https://www.imdb.com/exports/", wait_until="networkidle")
-
+        # ── Download ratings ──────────────────────────────────────────────────
         ratings_path = DATA_DIR / "ratings.csv"
         print("Downloading ratings…")
-        ratings_path = await _click_export(page, "ratings", ratings_path)
+        ratings_path = await _click_export(page, "your ratings", ratings_path)
 
+        # ── Download watchlist ────────────────────────────────────────────────
         watchlist_path = DATA_DIR / "watchlist.csv"
         print("Downloading watchlist…")
         watchlist_path = await _click_export(page, "watchlist", watchlist_path)
@@ -90,70 +79,43 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
         return ratings_path, watchlist_path
 
 
-async def _request_exports(page) -> None:
-    """Click 'Create export' / 'Request' buttons to trigger generation of both files."""
-    # These selectors target request/generate buttons (not download buttons)
-    request_selectors = [
-        "button:has-text('Create')",
-        "button:has-text('Request')",
-        "button:has-text('Generate')",
-        "button:has-text('Export')",
-        "[data-testid*='create'] button",
-        "[data-testid*='request'] button",
-    ]
-    clicked = 0
-    for sel in request_selectors:
-        buttons = page.locator(sel)
-        count = await buttons.count()
-        for i in range(count):
-            try:
-                btn = buttons.nth(i)
-                text = await btn.inner_text()
-                print(f"  Clicking: '{text.strip()}'")
-                await btn.click()
-                await page.wait_for_timeout(2000)
-                clicked += 1
-            except Exception:
-                pass
-        if clicked >= 2:
-            break
-
-    if clicked == 0:
-        # Log the page so we can see what buttons are available
-        content = await page.content()
-        print(f"  WARNING: No request buttons found. Page snippet:\n{content[:800]}")
-    else:
-        print(f"  Triggered {clicked} export request(s).")
-
-
-async def _click_export(page, kind: str, dest: Path) -> Path:
-    """Find and click the export button for 'ratings' or 'watchlist' on the exports page."""
-    # Try several selector strategies to find the right button/link
+async def _click_export(page, label: str, dest: Path) -> Path:
+    """
+    Find the export card whose heading contains `label` (case-insensitive),
+    then click its Download button and save the file.
+    """
+    # Find the section/card that contains the label text, then find a
+    # download link or button inside it.
     selectors = [
-        f"[data-testid*='{kind}'] button",
-        f"[data-testid*='{kind}'] a",
-        f"button:has-text('{kind}')",
-        f"a:has-text('{kind}')",
-        f"button:has-text('Export')",  # fallback: first Export button
+        # Card contains the label, button/link inside it
+        f":has-text('{label}') >> button:has-text('Download')",
+        f":has-text('{label}') >> a:has-text('Download')",
+        f":has-text('{label}') >> button:has-text('Export')",
+        f":has-text('{label}') >> a[href*='export']",
+        f":has-text('{label}') >> a[download]",
+        # Fallback: any Download button on page
+        "button:has-text('Download')",
+        "a:has-text('Download')",
     ]
 
     btn = None
+    used_sel = None
     for sel in selectors:
         candidate = page.locator(sel).first
         if await candidate.count() > 0:
             btn = candidate
-            print(f"  Found export button via: {sel}")
+            used_sel = sel
             break
 
     if btn is None:
-        # Dump page content to help diagnose
         content = await page.content()
         raise RuntimeError(
-            f"Could not find a '{kind}' export button on {page.url}\n"
+            f"Could not find download button for '{label}'.\n"
             f"Page title: {await page.title()}\n"
-            f"Page snippet: {content[:500]}"
+            f"Page snippet:\n{content[:1000]}"
         )
 
+    print(f"  Found via: {used_sel}")
     async with page.expect_download(timeout=60000) as dl:
         await btn.click()
 
