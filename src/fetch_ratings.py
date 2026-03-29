@@ -53,21 +53,15 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
         print(f"Navigating to {EXPORTS_URL} …")
         await page.goto(EXPORTS_URL, wait_until="load")
 
-        # AWS WAF challenge fires on this page: it runs JS, sets a cookie,
-        # then auto-reloads to the real page. Wait until real content appears.
-        print("Waiting for WAF challenge to resolve…")
-        try:
-            await page.wait_for_function(
-                "document.title !== '' && document.body.innerText.trim().length > 50",
-                timeout=30000,
-            )
-        except Exception:
-            content = await page.content()
-            raise RuntimeError(
-                f"WAF challenge did not resolve within 30s.\n"
-                f"Page HTML:\n{content[:1000]}"
-            )
+        # Wait for the real page content to appear (title is "Your exports")
+        print("Waiting for exports page to load…")
+        await page.wait_for_function(
+            "document.title && document.title.toLowerCase().includes('export')",
+            timeout=30000,
+        )
         print(f"Page title: {await page.title()}")
+        # Give the page JS a moment to render the list items
+        await page.wait_for_timeout(3000)
 
         # ── Download ratings (top entry in "your ratings" section) ────────────
         ratings_path = DATA_DIR / "ratings.csv"
