@@ -1,4 +1,5 @@
 .env
+imdb_cookies.txt
 # Ignore CSVs at root (temp files) but allow data/ folder
 *.csv
 !data/*.csv

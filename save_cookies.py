@@ -11,6 +11,7 @@ Then copy the printed base64 string into a GitHub Secret named IMDB_COOKIES.
 import asyncio
 import base64
 import json
+from pathlib import Path
 
 from playwright.async_api import async_playwright
 
@@ -44,13 +45,16 @@ async def main():
 
     cookies_b64 = base64.b64encode(json.dumps(cookies).encode()).decode()
 
-    print(f"Captured {len(cookies)} cookies.\n")
-    print("=" * 60)
-    print("Save this as a GitHub Secret named:  IMDB_COOKIES")
-    print("=" * 60)
-    print(cookies_b64)
-    print("=" * 60)
-    print("\nGo to: github.com/zlatansolo/imdb-recommender/settings/secrets/actions")
+    # Save to file — easier than copying from terminal
+    out = Path("imdb_cookies.txt")
+    out.write_text(cookies_b64)
+
+    print(f"Captured {len(cookies)} cookies.")
+    print(f"\nSaved to: {out.resolve()}")
+    print("\nNext steps:")
+    print("  1. Open imdb_cookies.txt and copy the entire contents")
+    print("  2. Go to: github.com/zlatansolo/imdb-recommender/settings/secrets/actions")
+    print("  3. Create a secret named IMDB_COOKIES and paste the value")
 
 
 asyncio.run(main())

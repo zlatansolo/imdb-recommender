@@ -47,7 +47,7 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
         # ── Auth: cookies or login ────────────────────────────────────────────
         if cookies_b64:
             print("Using saved cookies for authentication…")
-            cookies = json.loads(base64.b64decode(cookies_b64).decode())
+            cookies = json.loads(base64.b64decode(cookies_b64.strip()).decode())
             await context.add_cookies(cookies)
             # Quick check: hit IMDb to confirm session is valid
             await page.goto("https://www.imdb.com/", wait_until="domcontentloaded")
