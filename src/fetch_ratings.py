@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
 
 EXPORTS_URL = "https://www.imdb.com/exports/?ref_=wl"
@@ -36,6 +37,7 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
             ),
         )
         page = await context.new_page()
+        await stealth_async(page)
 
         # ── Auth ──────────────────────────────────────────────────────────────
         print("Loading session cookies…")
@@ -52,6 +54,21 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
         # ── Navigate to exports page ──────────────────────────────────────────
         print(f"Navigating to {EXPORTS_URL} …")
         await page.goto(EXPORTS_URL, wait_until="load")
+
+        # AWS WAF challenge fires on this page: it runs JS, sets a cookie,
+        # then auto-reloads to the real page. Wait until real content appears.
+        print("Waiting for WAF challenge to resolve…")
+        try:
+            await page.wait_for_function(
+                "document.title !== '' && document.body.innerText.trim().length > 50",
+                timeout=30000,
+            )
+        except Exception:
+            content = await page.content()
+            raise RuntimeError(
+                f"WAF challenge did not resolve within 30s.\n"
+                f"Page HTML:\n{content[:1000]}"
+            )
         print(f"Page title: {await page.title()}")
 
         # ── Download ratings (top entry in "your ratings" section) ────────────
