@@ -61,39 +61,58 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
             print("No cookies found — falling back to email/password login…")
             await _login(page, email, password)
 
+        # ── Navigate to exports page ──────────────────────────────────────────
+        print("Navigating to IMDb exports page…")
+        await page.goto("https://www.imdb.com/exports/", wait_until="networkidle")
+
         # ── Download ratings ──────────────────────────────────────────────────
         ratings_path = DATA_DIR / "ratings.csv"
         print("Downloading ratings…")
-        ratings_path = await _fetch_csv(page, RATINGS_EXPORT_URL, ratings_path)
+        ratings_path = await _click_export(page, "ratings", ratings_path)
 
         # ── Download watchlist ────────────────────────────────────────────────
         watchlist_path = DATA_DIR / "watchlist.csv"
         print("Downloading watchlist…")
-        watchlist_path = await _fetch_csv(page, WATCHLIST_EXPORT_URL, watchlist_path)
+        watchlist_path = await _click_export(page, "watchlist", watchlist_path)
 
         await browser.close()
         return ratings_path, watchlist_path
 
 
-async def _fetch_csv(page, url: str, dest: Path) -> Path:
-    """Navigate to an IMDb export URL and save the response body as a CSV."""
-    response = await page.goto(url, wait_until="domcontentloaded")
-    if response is None or response.status != 200:
-        status = response.status if response else "no response"
-        raise RuntimeError(f"Export URL returned HTTP {status}: {url}")
+async def _click_export(page, kind: str, dest: Path) -> Path:
+    """Find and click the export button for 'ratings' or 'watchlist' on the exports page."""
+    # Try several selector strategies to find the right button/link
+    selectors = [
+        f"[data-testid*='{kind}'] button",
+        f"[data-testid*='{kind}'] a",
+        f"button:has-text('{kind}')",
+        f"a:has-text('{kind}')",
+        f"button:has-text('Export')",  # fallback: first Export button
+    ]
 
-    content_type = response.headers.get("content-type", "")
-    body = await response.body()
+    btn = None
+    for sel in selectors:
+        candidate = page.locator(sel).first
+        if await candidate.count() > 0:
+            btn = candidate
+            print(f"  Found export button via: {sel}")
+            break
 
-    # If IMDb redirected to a sign-in page instead of returning CSV
-    if b"ap/signin" in body[:500] or b"<html" in body[:100].lower():
+    if btn is None:
+        # Dump page content to help diagnose
+        content = await page.content()
         raise RuntimeError(
-            "Export URL redirected to sign-in page — cookies may be expired. "
-            "Re-run save_cookies.py and update the IMDB_COOKIES secret."
+            f"Could not find a '{kind}' export button on {page.url}\n"
+            f"Page title: {await page.title()}\n"
+            f"Page snippet: {content[:500]}"
         )
 
-    dest.write_bytes(body)
-    print(f"  Saved: {dest} ({dest.stat().st_size:,} bytes, content-type: {content_type})")
+    async with page.expect_download(timeout=60000) as dl:
+        await btn.click()
+
+    download = await dl.value
+    await download.save_as(dest)
+    print(f"  Saved: {dest} ({dest.stat().st_size:,} bytes)")
     return dest
 
 
