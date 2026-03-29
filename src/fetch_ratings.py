@@ -65,18 +65,65 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
         print("Navigating to IMDb exports page…")
         await page.goto("https://www.imdb.com/exports/", wait_until="networkidle")
 
-        # ── Download ratings ──────────────────────────────────────────────────
+        # ── Step 1: Request both exports ──────────────────────────────────────
+        print("Requesting export generation for ratings and watchlist…")
+        await _request_exports(page)
+
+        # ── Step 2: Wait for IMDb to generate the files ───────────────────────
+        wait_minutes = 25
+        print(f"Waiting {wait_minutes} minutes for IMDb to generate exports…")
+        await asyncio.sleep(wait_minutes * 60)
+
+        # ── Step 3: Reload and download ───────────────────────────────────────
+        print("Reloading exports page to download ready files…")
+        await page.goto("https://www.imdb.com/exports/", wait_until="networkidle")
+
         ratings_path = DATA_DIR / "ratings.csv"
         print("Downloading ratings…")
         ratings_path = await _click_export(page, "ratings", ratings_path)
 
-        # ── Download watchlist ────────────────────────────────────────────────
         watchlist_path = DATA_DIR / "watchlist.csv"
         print("Downloading watchlist…")
         watchlist_path = await _click_export(page, "watchlist", watchlist_path)
 
         await browser.close()
         return ratings_path, watchlist_path
+
+
+async def _request_exports(page) -> None:
+    """Click 'Create export' / 'Request' buttons to trigger generation of both files."""
+    # These selectors target request/generate buttons (not download buttons)
+    request_selectors = [
+        "button:has-text('Create')",
+        "button:has-text('Request')",
+        "button:has-text('Generate')",
+        "button:has-text('Export')",
+        "[data-testid*='create'] button",
+        "[data-testid*='request'] button",
+    ]
+    clicked = 0
+    for sel in request_selectors:
+        buttons = page.locator(sel)
+        count = await buttons.count()
+        for i in range(count):
+            try:
+                btn = buttons.nth(i)
+                text = await btn.inner_text()
+                print(f"  Clicking: '{text.strip()}'")
+                await btn.click()
+                await page.wait_for_timeout(2000)
+                clicked += 1
+            except Exception:
+                pass
+        if clicked >= 2:
+            break
+
+    if clicked == 0:
+        # Log the page so we can see what buttons are available
+        content = await page.content()
+        print(f"  WARNING: No request buttons found. Page snippet:\n{content[:800]}")
+    else:
+        print(f"  Triggered {clicked} export request(s).")
 
 
 async def _click_export(page, kind: str, dest: Path) -> Path:
