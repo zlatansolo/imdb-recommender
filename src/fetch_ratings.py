@@ -51,7 +51,7 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
 
         # ── Navigate to exports page ──────────────────────────────────────────
         print(f"Navigating to {EXPORTS_URL} …")
-        await page.goto(EXPORTS_URL, wait_until="networkidle")
+        await page.goto(EXPORTS_URL, wait_until="load")
         print(f"Page title: {await page.title()}")
 
         # ── Download ratings (top entry in "your ratings" section) ────────────
