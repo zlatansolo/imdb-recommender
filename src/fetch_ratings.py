@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
 
 
 EXPORTS_URL = "https://www.imdb.com/exports/?ref_=wl"
@@ -37,7 +36,6 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
             ),
         )
         page = await context.new_page()
-        await stealth_async(page)
 
         # ── Auth ──────────────────────────────────────────────────────────────
         print("Loading session cookies…")
