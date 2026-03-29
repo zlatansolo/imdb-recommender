@@ -1,5 +1,7 @@
 .env
+# Ignore CSVs at root (temp files) but allow data/ folder
 *.csv
+!data/*.csv
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -8,3 +10,6 @@ dist/
 build/
 .venv/
 venv/
+test_email.html
+test_render.py
+test_local.py
