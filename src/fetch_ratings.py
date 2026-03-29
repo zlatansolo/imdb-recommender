@@ -79,45 +79,39 @@ async def _download_top(page, label: str, dest: Path) -> Path:
     """
     Find the first real download link for the given section label and save it.
     """
-    # Dump all links to find the download URL pattern
-    all_links = await page.evaluate("""() => {
-        return Array.from(document.querySelectorAll('a[href]')).map(a => ({
-            text: a.textContent.trim().slice(0, 80),
-            href: a.href
+    # Dump all buttons to find download buttons
+    all_buttons = await page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('button')).map((b, i) => ({
+            index: i,
+            text: b.textContent.trim().slice(0, 80),
+            type: b.type,
+            disabled: b.disabled,
+            classes: b.className.slice(0, 80)
         }));
     }""")
-    print(f"  All links on page ({len(all_links)} total):")
-    for link in all_links:
-        print(f"    [{link['text']}] -> {link['href']}")
+    print(f"  Buttons on page ({len(all_buttons)} total):")
+    for b in all_buttons:
+        print(f"    [{b['index']}] '{b['text']}' class='{b['classes']}'")
 
-    # Filter to real download links — exclude nav/auth URLs
-    excluded = ['logout', 'signin', 'register', 'ap/signin', 'javascript', '#']
-    download_links = [
-        l for l in all_links
-        if not any(ex in l['href'].lower() for ex in excluded)
-        and ('export' in l['href'].lower()
-             or 'download' in l['href'].lower()
-             or 'amazonaws' in l['href'].lower()
-             or '.csv' in l['href'].lower())
-    ]
-    print(f"  Candidate download links: {download_links}")
-
-    if not download_links:
-        raise RuntimeError(
-            f"No download links found for '{label}'.\n"
-            f"All links: {all_links}"
-        )
-
-    # Pick the link whose surrounding text matches the label (or just first)
-    href = download_links[0]['href']
-    for link in download_links:
-        if label.lower() in link['text'].lower():
-            href = link['href']
+    # Find button whose text matches label or contains 'download'
+    lower_label = label.lower()
+    target_idx = None
+    for b in all_buttons:
+        text = b['text'].lower()
+        if 'download' in text or lower_label in text:
+            target_idx = b['index']
+            print(f"  Matched button [{target_idx}]: '{b['text']}'")
             break
 
-    print(f"  Downloading from: {href}")
+    if target_idx is None:
+        raise RuntimeError(
+            f"No download button found for '{label}'.\n"
+            f"Buttons: {all_buttons}"
+        )
+
+    btn = page.locator("button").nth(target_idx)
     async with page.expect_download(timeout=60000) as dl:
-        await page.goto(href, wait_until="commit")
+        await btn.click()
 
     download = await dl.value
     await download.save_as(dest)
