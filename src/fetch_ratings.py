@@ -73,7 +73,7 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
         # ── Download watchlist ────────────────────────────────────────────────
         watchlist_path = DATA_DIR / "watchlist.csv"
         print("Downloading watchlist…")
-        watchlist_path = await _click_export(page, "watchlist", watchlist_path)
+        watchlist_path = await _click_export(page, "jeremy-taieb", watchlist_path)
 
         await browser.close()
         return ratings_path, watchlist_path
@@ -81,43 +81,42 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
 
 async def _click_export(page, label: str, dest: Path) -> Path:
     """
-    Find the export card whose heading contains `label` (case-insensitive),
-    then click its Download button and save the file.
+    On the IMDb exports page, find the section whose heading contains `label`,
+    then click the first (top) download link in that section's list.
     """
-    # Find the section/card that contains the label text, then find a
-    # download link or button inside it.
-    selectors = [
-        # Card contains the label, button/link inside it
-        f":has-text('{label}') >> button:has-text('Download')",
-        f":has-text('{label}') >> a:has-text('Download')",
-        f":has-text('{label}') >> button:has-text('Export')",
-        f":has-text('{label}') >> a[href*='export']",
-        f":has-text('{label}') >> a[download]",
-        # Fallback: any Download button on page
-        "button:has-text('Download')",
-        "a:has-text('Download')",
-    ]
+    # Use JS to locate the heading by text, walk up to its section container,
+    # then grab the first anchor/button with a download href inside it.
+    btn = await page.evaluate_handle("""(label) => {
+        const lower = label.toLowerCase();
+        // Find all headings/spans that contain the label text
+        const all = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,span,p,div'));
+        const heading = all.find(el =>
+            el.children.length === 0 && el.textContent.toLowerCase().includes(lower)
+        );
+        if (!heading) return null;
+        // Walk up until we find a container that holds download links
+        let container = heading.parentElement;
+        for (let i = 0; i < 6; i++) {
+            const link = container.querySelector('a[href*="export"], a[download], button');
+            if (link) return link;
+            if (container.parentElement) container = container.parentElement;
+        }
+        return null;
+    }""", label)
 
-    btn = None
-    used_sel = None
-    for sel in selectors:
-        candidate = page.locator(sel).first
-        if await candidate.count() > 0:
-            btn = candidate
-            used_sel = sel
-            break
-
-    if btn is None:
+    # Check if we got a valid element back
+    is_null = await page.evaluate("el => el === null", btn)
+    if is_null:
         content = await page.content()
         raise RuntimeError(
-            f"Could not find download button for '{label}'.\n"
+            f"Could not find section for '{label}' on exports page.\n"
             f"Page title: {await page.title()}\n"
-            f"Page snippet:\n{content[:1000]}"
+            f"Page HTML (first 1500 chars):\n{content[:1500]}"
         )
 
-    print(f"  Found via: {used_sel}")
+    print(f"  Found download element for '{label}'")
     async with page.expect_download(timeout=60000) as dl:
-        await btn.click()
+        await btn.as_element().click()
 
     download = await dl.value
     await download.save_as(dest)
