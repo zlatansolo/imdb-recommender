@@ -36,6 +36,7 @@ jobs:
         env:
           IMDB_EMAIL:    ${{ secrets.IMDB_EMAIL }}
           IMDB_PASSWORD: ${{ secrets.IMDB_PASSWORD }}
+          IMDB_COOKIES:  ${{ secrets.IMDB_COOKIES }}
         run: python src/main.py
 
       - name: Commit updated data files
