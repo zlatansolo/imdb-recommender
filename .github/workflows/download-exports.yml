@@ -1,6 +1,8 @@
 name: 2 - Download IMDb Exports
 
-on:
+"on":
+  schedule:
+    - cron: "25 8 * * 1"  # Every Monday at 08:25 UTC (25 min after trigger)
   workflow_dispatch:
 
 permissions:
