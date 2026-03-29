@@ -79,52 +79,47 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
 
 async def _download_top(page, label: str, dest: Path) -> Path:
     """
-    Find the section whose heading contains `label`, click the first
-    download link in that section (the most recent export), save the file.
+    Find the first real download link for the given section label and save it.
     """
-    btn = await page.evaluate_handle("""(label) => {
-        const lower = label.toLowerCase();
-        // Find the heading element for this section
-        const all = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,span,li,p'));
-        const heading = all.find(el =>
-            el.children.length === 0 &&
-            el.textContent.toLowerCase().includes(lower)
-        );
-        if (!heading) return null;
-        // Walk up to find a container that has a download link
-        let container = heading.parentElement;
-        for (let i = 0; i < 8; i++) {
-            const link = container.querySelector(
-                'a[href*="export"], a[href*="download"], a[download], button:not([disabled])'
-            );
-            if (link) return link;
-            if (!container.parentElement) break;
-            container = container.parentElement;
-        }
-        return null;
-    }""", label)
+    # Dump all links to find the download URL pattern
+    all_links = await page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('a[href]')).map(a => ({
+            text: a.textContent.trim().slice(0, 80),
+            href: a.href
+        }));
+    }""")
+    print(f"  All links on page ({len(all_links)} total):")
+    for link in all_links:
+        print(f"    [{link['text']}] -> {link['href']}")
 
-    is_null = await page.evaluate("el => el === null", btn)
-    if is_null:
-        content = await page.content()
+    # Filter to real download links — exclude nav/auth URLs
+    excluded = ['logout', 'signin', 'register', 'ap/signin', 'javascript', '#']
+    download_links = [
+        l for l in all_links
+        if not any(ex in l['href'].lower() for ex in excluded)
+        and ('export' in l['href'].lower()
+             or 'download' in l['href'].lower()
+             or 'amazonaws' in l['href'].lower()
+             or '.csv' in l['href'].lower())
+    ]
+    print(f"  Candidate download links: {download_links}")
+
+    if not download_links:
         raise RuntimeError(
-            f"Could not find download link for '{label}'.\n"
-            f"Page title: {await page.title()}\n"
-            f"Page HTML (first 2000 chars):\n{content[:2000]}"
+            f"No download links found for '{label}'.\n"
+            f"All links: {all_links}"
         )
 
-    print(f"  Found download element for '{label}'")
+    # Pick the link whose surrounding text matches the label (or just first)
+    href = download_links[0]['href']
+    for link in download_links:
+        if label.lower() in link['text'].lower():
+            href = link['href']
+            break
 
-    # Get the href directly — if it's an anchor, navigate to it to trigger the download
-    href = await page.evaluate("el => el.href || null", btn)
-    if href:
-        print(f"  Navigating to download URL: {href}")
-        async with page.expect_download(timeout=60000) as dl:
-            await page.goto(href, wait_until="commit")
-    else:
-        # Fall back to force-click for buttons
-        async with page.expect_download(timeout=60000) as dl:
-            await btn.as_element().click(force=True)
+    print(f"  Downloading from: {href}")
+    async with page.expect_download(timeout=60000) as dl:
+        await page.goto(href, wait_until="commit")
 
     download = await dl.value
     await download.save_as(dest)
