@@ -64,7 +64,7 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
         # ── Download ratings ──────────────────────────────────────────────────
         ratings_path = DATA_DIR / "ratings.csv"
         print("Downloading ratings…")
-        async with context.expect_download(timeout=60000) as dl:
+        async with page.expect_download(timeout=60000) as dl:
             await page.goto(RATINGS_EXPORT_URL)
         await (await dl.value).save_as(ratings_path)
         print(f"  Saved: {ratings_path} ({ratings_path.stat().st_size:,} bytes)")
@@ -72,7 +72,7 @@ async def _run(email: str, password: str, cookies_b64: str | None) -> tuple[Path
         # ── Download watchlist ────────────────────────────────────────────────
         watchlist_path = DATA_DIR / "watchlist.csv"
         print("Downloading watchlist…")
-        async with context.expect_download(timeout=60000) as dl:
+        async with page.expect_download(timeout=60000) as dl:
             await page.goto(WATCHLIST_EXPORT_URL)
         await (await dl.value).save_as(watchlist_path)
         print(f"  Saved: {watchlist_path} ({watchlist_path.stat().st_size:,} bytes)")
