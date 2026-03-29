@@ -1,6 +1,6 @@
 name: Sync IMDb Data
 
-on:
+"on":
   schedule:
     # Every Monday at 09:00 UTC
     - cron: "0 9 * * 1"
