@@ -42,26 +42,24 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
         cookies = json.loads(base64.b64decode(cookies_b64.strip()).decode())
         await context.add_cookies(cookies)
 
-        await page.goto("https://www.imdb.com/", wait_until="domcontentloaded")
-        if "ap/signin" in page.url:
-            raise RuntimeError(
-                "Cookies are expired. Re-run save_cookies.py and update IMDB_COOKIES."
-            )
-        print(f"Authenticated. URL: {page.url}")
-
-        # ── Navigate to exports page ──────────────────────────────────────────
-        print(f"Navigating to {EXPORTS_URL} …")
+        # Verify auth by checking the exports page directly
         await page.goto(EXPORTS_URL, wait_until="load")
-
-        # Wait for the real page content to appear (title is "Your exports")
-        print("Waiting for exports page to load…")
         await page.wait_for_function(
             "document.title && document.title.toLowerCase().includes('export')",
             timeout=30000,
         )
-        print(f"Page title: {await page.title()}")
-        # Give the page JS a moment to render the list items
+        # Check we're actually logged in (page will show sign-in links if not)
+        sign_in_visible = await page.locator("a[href*='registration/signin']").count()
+        page_text = await page.evaluate("document.body ? document.body.innerText : ''")
+        if sign_in_visible and "sign in for more" in page_text.lower():
+            raise RuntimeError(
+                "Exports page requires sign-in — cookies are expired or incomplete.\n"
+                "Re-run save_cookies.py locally and update the IMDB_COOKIES secret."
+            )
+        print(f"Authenticated. Page title: {await page.title()}")
         await page.wait_for_timeout(3000)
+
+        # (already on exports page after auth check above)
 
         # ── Download ratings (top entry in "your ratings" section) ────────────
         ratings_path = DATA_DIR / "ratings.csv"

@@ -35,8 +35,8 @@ async def main():
         print("3. Once you are back on the IMDb homepage, come back here")
         input("\nPress Enter once you are fully logged in...\n")
 
-        # Collect cookies from all pages/tabs in the context
-        cookies = await context.cookies(["https://www.imdb.com", "https://www.amazon.com"])
+        # Collect ALL cookies from every domain visited during login
+        cookies = await context.cookies()
         await browser.close()
 
     if not cookies:
