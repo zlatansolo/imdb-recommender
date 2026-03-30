@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IMDb Recommender</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d0d0d;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 16px;
+    padding: 40px;
+    width: 100%;
+    max-width: 560px;
+    text-align: center;
+  }
+
+  .logo { font-size: 52px; margin-bottom: 16px; }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 800;
+    color: #E8B923;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+  }
+
+  .subtitle { font-size: 14px; color: #777; margin-bottom: 32px; }
+
+  .stats {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 28px;
+  }
+  .stat {
+    background: #111;
+    border: 1px solid #2a2a2a;
+    border-radius: 10px;
+    padding: 14px 20px;
+    flex: 1;
+    opacity: 0.4;
+    transition: opacity 0.3s;
+  }
+  .stat.loaded { opacity: 1; }
+  .stat-value { font-size: 28px; font-weight: 800; color: #E8B923; line-height: 1; margin-bottom: 4px; }
+  .stat-label { font-size: 12px; color: #888; }
+
+  .status { font-size: 13px; color: #888; min-height: 20px; margin-bottom: 20px; }
+  .status.error { color: #e74c3c; }
+  .status.ok { color: #2ecc71; }
+
+  .progress-bar { background: #111; border-radius: 4px; height: 4px; margin-bottom: 24px; overflow: hidden; opacity: 0; transition: opacity 0.3s; }
+  .progress-bar.visible { opacity: 1; }
+  .progress-fill { height: 100%; background: #E8B923; border-radius: 4px; transition: width 0.4s ease; width: 0%; }
+
+  /* Primary link-button */
+  .btn-link {
+    display: block;
+    background: #E8B923;
+    color: #000;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 14px 32px;
+    border-radius: 10px;
+    text-decoration: none;
+    margin-bottom: 10px;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0.4;
+    transition: background 0.2s, opacity 0.2s;
+  }
+  .btn-link.ready { pointer-events: auto; opacity: 1; }
+  .btn-link.ready:hover { background: #f5c842; }
+
+  .btn {
+    display: block;
+    background: #1e1e1e;
+    color: #aaa;
+    border: 1px solid #333;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    width: 100%;
+    margin-bottom: 10px;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #252525; color: #e0e0e0; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  hr { border: none; border-top: 1px solid #222; margin: 24px 0; }
+
+  /* Prompt textarea */
+  .prompt-box { display: none; text-align: left; margin-top: 16px; }
+  .prompt-box label { font-size: 12px; color: #666; display: block; margin-bottom: 6px; }
+  .prompt-box textarea {
+    width: 100%;
+    height: 140px;
+    background: #111;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    color: #bbb;
+    font-size: 11px;
+    font-family: monospace;
+    padding: 10px;
+    resize: vertical;
+  }
+
+  .hint { font-size: 12px; color: #555; line-height: 1.6; }
+
+  /* Save section */
+  .save-section { margin-top: 24px; text-align: left; }
+  .save-section h2 { font-size: 14px; font-weight: 700; color: #aaa; margin-bottom: 10px; }
+  .save-section textarea {
+    width: 100%;
+    height: 120px;
+    background: #111;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    color: #bbb;
+    font-size: 11px;
+    font-family: monospace;
+    padding: 10px;
+    resize: vertical;
+    margin-bottom: 8px;
+  }
+  .save-section textarea::placeholder { color: #444; }
+  .btn-save {
+    display: block;
+    width: 100%;
+    background: #1e3a1e;
+    color: #4caf50;
+    border: 1px solid #2a4a2a;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn-save:hover { background: #254a25; }
+  .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🎬</div>
+  <h1>IMDb Recommender</h1>
+  <p class="subtitle">Personalised picks based on your ratings &amp; watchlist</p>
+
+  <div class="stats">
+    <div class="stat" id="stat-ratings">
+      <div class="stat-value" id="ratings-count">—</div>
+      <div class="stat-label">Ratings</div>
+    </div>
+    <div class="stat" id="stat-watchlist">
+      <div class="stat-value" id="watchlist-count">—</div>
+      <div class="stat-label">Watchlist</div>
+    </div>
+    <div class="stat" id="stat-excluded">
+      <div class="stat-value" id="excluded-count">—</div>
+      <div class="stat-label">Excluded</div>
+    </div>
+  </div>
+
+  <div class="progress-bar" id="progress-bar">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+
+  <div class="status" id="status">Loading your data…</div>
+
+  <a id="btn-generate" class="btn-link" href="#" target="_blank" rel="noopener">
+    ✦ Generate Recommendations
+  </a>
+
+  <button class="btn" id="btn-copy" disabled>📋 Copy prompt to clipboard</button>
+  <button class="btn" id="btn-show" disabled>👁 Show prompt text</button>
+
+  <div class="prompt-box" id="prompt-box">
+    <label>Prompt (select all → copy → paste into Claude):</label>
+    <textarea id="prompt-textarea" readonly></textarea>
+  </div>
+
+  <hr>
+
+  <div class="save-section">
+    <h2>💾 Save recommendations</h2>
+    <textarea id="paste-area" placeholder="Paste the HTML from Claude here (the full ```html ... ``` block)…"></textarea>
+    <button class="btn-save" id="btn-save" onclick="saveRecs()">Save as YYYY-MM-DD-recommendations.html</button>
+  </div>
+
+  <hr>
+  <p class="hint">
+    Fetches your latest ratings &amp; watchlist from GitHub, builds a personalised
+    prompt, then opens Claude.ai with it pre-filled.
+  </p>
+</div>
+
+<script>
+const RATINGS_URL  = 'https://raw.githubusercontent.com/zlatansolo/imdb-recommender/main/data/ratings.csv';
+const WATCHLIST_URL = 'https://raw.githubusercontent.com/zlatansolo/imdb-recommender/main/data/watchlist.csv';
+
+let builtPrompt = '';
+
+function parseCSV(text) {
+  const rows = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const row = [];
+    let field = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQ && line[i+1] === '"') { field += '"'; i++; }
+        else inQ = !inQ;
+      } else if (c === ',' && !inQ) { row.push(field); field = ''; }
+      else field += c;
+    }
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function toObjects(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) return [];
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1).map(r => {
+    const o = {};
+    headers.forEach((h, i) => o[h] = (r[i] || '').trim());
+    return o;
+  });
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+function setProgress(p) {
+  document.getElementById('progress-bar').classList.add('visible');
+  document.getElementById('progress-fill').style.width = p + '%';
+}
+
+function setStat(id, val) {
+  document.getElementById(id + '-count').textContent = Number(val).toLocaleString();
+  document.getElementById('stat-' + id).classList.add('loaded');
+}
+
+async function init() {
+  setProgress(10);
+  setStatus('Fetching ratings…');
+
+  let ratText, wlText;
+
+  try {
+    const r = await fetch(RATINGS_URL);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    ratText = await r.text();
+  } catch(e) {
+    setStatus('❌ Could not fetch ratings: ' + e.message, 'error');
+    return;
+  }
+
+  setProgress(45);
+  setStatus('Fetching watchlist…');
+
+  try {
+    const r = await fetch(WATCHLIST_URL);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    wlText = await r.text();
+  } catch(e) {
+    setStatus('❌ Could not fetch watchlist: ' + e.message, 'error');
+    return;
+  }
+
+  setProgress(75);
+  setStatus('Parsing & building prompt…');
+
+  const ratings   = toObjects(ratText);
+  const watchlist = toObjects(wlText);
+
+  const excluded = new Set();
+  const tens = [], eightPlus = [];
+
+  for (const r of ratings) {
+    const title = r['Title'] || '';
+    const year  = r['Year'] || '';
+    const score = parseFloat(r['Your Rating'] || '0');
+    if (title) {
+      excluded.add((title + ' (' + year + ')').toLowerCase());
+      excluded.add(title.toLowerCase());
+    }
+    if (score === 10)      tens.push(title + ' (' + year + ')');
+    else if (score >= 8)   eightPlus.push(title + ' (' + year + ')');
+  }
+
+  for (const w of watchlist) {
+    const title = w['Title'] || '';
+    const year  = w['Year'] || '';
+    if (title) {
+      excluded.add((title + ' (' + year + ')').toLowerCase());
+      excluded.add(title.toLowerCase());
+    }
+  }
+
+  const excList = [...excluded].filter(t => !t.includes('()')).sort();
+  const totalExc = Math.round(excList.length / 2);
+
+  setStat('ratings',   ratings.length);
+  setStat('watchlist', watchlist.length);
+  setStat('excluded',  totalExc);
+
+  builtPrompt = `Here are my IMDb ratings and watchlist. Please generate personalised recommendations strictly cross-checked against all excluded titles.
+
+TASTE PROFILE:
+- Rated 10/10: ${tens.join(' | ')}
+- Rated 8+: ${eightPlus.slice(0, 80).join(' | ')}
+- Loves: witty crime comedies (Snatch, Lock Stock, Big Lebowski), prestige crime TV (Sopranos, Wire, Breaking Bad, The Bureau), directors Nolan/Coens/Tarantino/Fincher/Villeneuve/Guy Ritchie
+- Dislikes: superhero bloat, fantasy epics, overly slow arthouse
+
+EXCLUSION LIST (${totalExc} titles — do not recommend any of these):
+${excList.join(' | ')}
+
+Generate ~8 picks per category. For each: title, year, IMDb rating, a direct IMDb link using Google's I'm Feeling Lucky in the format https://www.google.com/search?q=TITLE+YEAR+site:imdb.com&btnI=1 (replace spaces with +), and a 2-sentence personalised reason. Do NOT invent IMDb title IDs.
+
+Categories:
+1. Unseen movies
+2. Unseen TV series
+3. Hidden gems (IMDb 7.0–8.2, under 100k votes)
+4. Recent releases (2023–2026)
+5. French films & series
+
+Output a complete standalone HTML file (no external dependencies, all CSS inline) that I can save and open in my browser. Style it as a dark-themed visual report with cards, IMDb rating badges, and working clickable links. Start your response with the full HTML (\`\`\`html) and nothing else before it.`;
+
+  // Wire up the anchor button — open Claude.ai and auto-copy prompt
+  const btn = document.getElementById('btn-generate');
+  btn.href = 'https://claude.ai/new';
+  btn.onclick = () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(builtPrompt).catch(() => fallbackCopy());
+    } else {
+      fallbackCopy();
+    }
+    setStatus('✓ Prompt copied — paste it into Claude (Ctrl+V)', 'ok');
+  };
+  btn.classList.add('ready');
+
+  // Wire up copy button
+  const copyBtn = document.getElementById('btn-copy');
+  copyBtn.disabled = false;
+  copyBtn.onclick = () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(builtPrompt)
+        .then(() => { copyBtn.textContent = '✓ Copied!'; setTimeout(() => copyBtn.textContent = '📋 Copy prompt to clipboard', 2000); })
+        .catch(() => fallbackCopy());
+    } else {
+      fallbackCopy();
+    }
+  };
+
+  // Wire up show button
+  const showBtn = document.getElementById('btn-show');
+  showBtn.disabled = false;
+  showBtn.onclick = () => {
+    const box = document.getElementById('prompt-box');
+    const ta  = document.getElementById('prompt-textarea');
+    if (box.style.display === 'block') {
+      box.style.display = 'none';
+      showBtn.textContent = '👁 Show prompt text';
+    } else {
+      ta.value = builtPrompt;
+      box.style.display = 'block';
+      ta.select();
+      showBtn.textContent = '✕ Hide prompt';
+    }
+  };
+
+  setProgress(100);
+  setStatus('✓ Ready — ' + ratings.length + ' ratings · ' + watchlist.length + ' watchlist titles loaded', 'ok');
+  setTimeout(() => document.getElementById('progress-bar').classList.remove('visible'), 800);
+}
+
+function fallbackCopy() {
+  const ta = document.getElementById('prompt-textarea');
+  document.getElementById('prompt-box').style.display = 'block';
+  ta.value = builtPrompt;
+  ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+}
+
+function saveRecs() {
+  let html = document.getElementById('paste-area').value.trim();
+  if (!html) { alert('Paste the HTML from Claude first.'); return; }
+  html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+  const today = new Date();
+  const filename = today.getFullYear() + '-' +
+    String(today.getMonth() + 1).padStart(2, '0') + '-' +
+    String(today.getDate()).padStart(2, '0') + '-recommendations.html';
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  document.getElementById('btn-save').textContent = '✓ Saved as ' + filename;
+}
+
+init();
+</script>
+</body>
+</html>
