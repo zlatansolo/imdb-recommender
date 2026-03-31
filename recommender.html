@@ -212,8 +212,9 @@
 </div>
 
 <script>
-const RATINGS_URL  = 'https://raw.githubusercontent.com/zlatansolo/imdb-recommender/main/data/ratings.csv';
-const WATCHLIST_URL = 'https://raw.githubusercontent.com/zlatansolo/imdb-recommender/main/data/watchlist.csv';
+const _TS = Date.now();
+const RATINGS_URL  = `https://raw.githubusercontent.com/zlatansolo/imdb-recommender/main/data/ratings.csv?t=${_TS}`;
+const WATCHLIST_URL = `https://raw.githubusercontent.com/zlatansolo/imdb-recommender/main/data/watchlist.csv?t=${_TS}`;
 
 let builtPrompt = '';
 
