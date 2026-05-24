@@ -58,6 +58,7 @@
   .stat.loaded { opacity: 1; }
   .stat-value { font-size: 28px; font-weight: 800; color: #E8B923; line-height: 1; margin-bottom: 4px; }
   .stat-label { font-size: 12px; color: #888; }
+  .stat-date { font-size: 11px; color: #555; margin-top: 4px; }
 
   .status { font-size: 13px; color: #888; min-height: 20px; margin-bottom: 20px; }
   .status.error { color: #e74c3c; }
@@ -167,10 +168,12 @@
     <div class="stat" id="stat-ratings">
       <div class="stat-value" id="ratings-count">—</div>
       <div class="stat-label">Ratings</div>
+      <div class="stat-date" id="ratings-date"></div>
     </div>
     <div class="stat" id="stat-watchlist">
       <div class="stat-value" id="watchlist-count">—</div>
       <div class="stat-label">Watchlist</div>
+      <div class="stat-date" id="watchlist-date"></div>
     </div>
     <div class="stat" id="stat-excluded">
       <div class="stat-value" id="excluded-count">—</div>
@@ -217,6 +220,13 @@ const RATINGS_URL  = `https://raw.githubusercontent.com/zlatansolo/imdb-recommen
 const WATCHLIST_URL = `https://raw.githubusercontent.com/zlatansolo/imdb-recommender/main/data/watchlist.csv?t=${_TS}`;
 
 let builtPrompt = '';
+
+function formatLastModified(headerVal) {
+  if (!headerVal) return '';
+  const d = new Date(headerVal);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 function parseCSV(text) {
   const rows = [];
@@ -276,6 +286,8 @@ async function init() {
     const r = await fetch(RATINGS_URL);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     ratText = await r.text();
+    const d = formatLastModified(r.headers.get('last-modified'));
+    if (d) document.getElementById('ratings-date').textContent = d;
   } catch(e) {
     setStatus('❌ Could not fetch ratings: ' + e.message, 'error');
     return;
@@ -288,6 +300,8 @@ async function init() {
     const r = await fetch(WATCHLIST_URL);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     wlText = await r.text();
+    const d = formatLastModified(r.headers.get('last-modified'));
+    if (d) document.getElementById('watchlist-date').textContent = d;
   } catch(e) {
     setStatus('❌ Could not fetch watchlist: ' + e.message, 'error');
     return;

@@ -4,9 +4,20 @@ Builds a beautiful HTML email from recommendations and sends it via Gmail SMTP.
 
 import os
 import smtplib
-from datetime import date
+from datetime import date, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
+
+DATA_DIR = Path(__file__).parent.parent / "data"
+
+
+def _file_mtime(filename: str) -> str:
+    try:
+        mtime = (DATA_DIR / filename).stat().st_mtime
+        return datetime.fromtimestamp(mtime).strftime("%b %d, %Y")
+    except FileNotFoundError:
+        return "N/A"
 
 
 # ── Colour palette per category ───────────────────────────────────────────────
@@ -89,6 +100,7 @@ HTML_HEAD = """<!DOCTYPE html>
   .header .date-badge { display: inline-block; background: #E8B923; color: #000;
                          font-weight: 700; font-size: 13px; padding: 4px 14px;
                          border-radius: 20px; margin-top: 12px; }
+  .header .refresh-info { font-size: 12px; color: #666; margin-top: 10px; }
 
   /* Section header */
   .section { margin-bottom: 32px; }
@@ -181,13 +193,14 @@ def render_section(category: str, recommendations: list) -> str:
   </div>"""
 
 
-def build_html(recommendations: dict, report_date: str) -> str:
+def build_html(recommendations: dict, report_date: str, ratings_refreshed: str, watchlist_refreshed: str) -> str:
     header = f"""
   <div class="header">
     <div class="header-logo">🎬</div>
     <h1>Your Monthly Movie Picks</h1>
     <p>Personalised recommendations based on your 1,031+ IMDb ratings</p>
     <span class="date-badge">{report_date}</span>
+    <p class="refresh-info">Ratings refreshed: {ratings_refreshed} · Watchlist refreshed: {watchlist_refreshed}</p>
   </div>"""
 
     sections = ""
@@ -206,7 +219,9 @@ def send_email(recommendations: dict) -> None:
     gmail_app_password = os.environ["GMAIL_APP_PASSWORD"]
     report_date = date.today().strftime("%B %Y")
 
-    html_body = build_html(recommendations, report_date)
+    ratings_refreshed = _file_mtime("ratings.csv")
+    watchlist_refreshed = _file_mtime("watchlist.csv")
+    html_body = build_html(recommendations, report_date, ratings_refreshed, watchlist_refreshed)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"Your IMDb Picks for {report_date} 🎬"
