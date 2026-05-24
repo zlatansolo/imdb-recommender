@@ -51,39 +51,66 @@ async def _run(cookies_b64: str) -> None:
         await page.goto(EXPORTS_URL, wait_until="networkidle")
         print(f"Page title: {await page.title()}")
 
-        # ── Click all Create/Generate buttons ─────────────────────────────────
-        # These are the buttons that REQUEST a new export (not download buttons)
+        # ── Trigger any exports that are not already READY or PROCESSING ─────
+        # IMDb uses data-testid="export-status-button" for the status indicator.
+        # READY → <button class="... READY"> (clickable download)
+        # PROCESSING → <span class="... PROCESSING"> (non-interactive)
+        # Expired/never created → a different "Create export" button nearby
         triggered = await page.evaluate("""() => {
-            const keywords = ['create', 'generate', 'export', 'request'];
             const results = [];
-            const buttons = Array.from(document.querySelectorAll('button, input[type=button], input[type=submit]'));
-            for (const btn of buttons) {
+
+            // Click any visible non-status buttons near export sections that look
+            // like "create" / "request" triggers (text won't say "Ready"/"In progress")
+            const allBtns = Array.from(document.querySelectorAll('button'));
+            const statusTexts = new Set(['ready', 'in progress', 'processing', 'back to top']);
+            for (const btn of allBtns) {
                 const text = btn.textContent.trim().toLowerCase();
-                if (keywords.some(k => text.includes(k)) && !text.includes('download')) {
+                if (!text || statusTexts.has(text)) continue;
+                // Only click if it's in an export-related section
+                const inExportSection = !!btn.closest('[data-testid*="export"], .ipc-metadata-list-summary-item');
+                if (inExportSection) {
                     btn.click();
                     results.push(btn.textContent.trim());
                 }
             }
-            return results;
+
+            // Report current status of all export-status-button elements
+            const statusNodes = Array.from(document.querySelectorAll('[data-testid="export-status-button"]'));
+            const statuses = statusNodes.map(n => ({
+                tag: n.tagName,
+                status: n.classList.contains('READY') ? 'READY' : n.classList.contains('PROCESSING') ? 'PROCESSING' : 'UNKNOWN',
+                text: n.textContent.trim()
+            }));
+
+            return { triggered: results, statuses };
         }""")
 
-        if triggered:
-            print(f"Triggered export buttons: {triggered}")
+        if triggered["triggered"]:
+            print(f"Triggered export buttons: {triggered['triggered']}")
         else:
-            # Dump page for debugging
-            content = await page.content()
-            print(f"WARNING: No trigger buttons found.")
-            print(f"Page HTML (first 2000 chars):\n{content[:2000]}")
+            print("No new exports to trigger (all sections are already READY or PROCESSING).")
+
+        print("Export statuses:")
+        for s in triggered.get("statuses", []):
+            print(f"  [{s['status']}] {s['text']}")
 
         await page.wait_for_timeout(3000)
         await browser.close()
 
 
-def trigger_exports() -> None:
+def _load_cookies() -> str:
     cookies = os.environ.get("IMDB_COOKIES", "")
     if not cookies:
-        raise RuntimeError("IMDB_COOKIES env var not set. Run save_cookies.py first.")
-    asyncio.run(_run(cookies))
+        local = Path(__file__).parent.parent / "imdb_cookies.txt"
+        if local.exists():
+            cookies = local.read_text().strip()
+    if not cookies:
+        raise RuntimeError("IMDB_COOKIES not set and imdb_cookies.txt not found. Run save_cookies.py first.")
+    return cookies
+
+
+def trigger_exports() -> None:
+    asyncio.run(_run(_load_cookies()))
 
 
 if __name__ == "__main__":

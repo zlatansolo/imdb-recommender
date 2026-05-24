@@ -77,35 +77,60 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
 
 async def _download_top(page, label: str, dest: Path) -> Path:
     """
-    Find the first real download link for the given section label and save it.
+    Find and click the READY download button for the export section matching label.
+    IMDb renders READY exports as <button data-testid="export-status-button" class="... READY">
+    and in-progress ones as a non-interactive <span> with class PROCESSING.
     """
-    # Find the "Ready" button in the same container as the label text
+    # Check status first (plain evaluate so we can inspect without holding a handle)
+    status = await page.evaluate("""(label) => {
+        const lower = label.toLowerCase();
+        const titles = Array.from(document.querySelectorAll('.ipc-metadata-list-summary-item__t'));
+        for (const title of titles) {
+            if (!title.textContent.toLowerCase().includes(lower)) continue;
+            let el = title.parentElement;
+            for (let i = 0; i < 12; i++) {
+                if (!el) break;
+                const node = el.querySelector('[data-testid="export-status-button"]');
+                if (node) {
+                    return {
+                        found: true,
+                        ready: node.tagName === 'BUTTON' && node.classList.contains('READY'),
+                        statusText: node.textContent.trim()
+                    };
+                }
+                el = el.parentElement;
+            }
+        }
+        return { found: false };
+    }""", label)
+
+    if not status["found"]:
+        raise RuntimeError(
+            f"Could not find export section for '{label}'. "
+            "The page may not have loaded fully or the section label changed."
+        )
+    if not status["ready"]:
+        raise RuntimeError(
+            f"Export for '{label}' is not ready (status: {status['statusText']}). "
+            "Trigger a new export and wait a few minutes, then retry."
+        )
+
+    # Fetch the actual button element handle and click it
     btn = await page.evaluate_handle("""(label) => {
         const lower = label.toLowerCase();
-        // Find leaf text nodes containing the label
-        const leaves = Array.from(document.querySelectorAll('*')).filter(el =>
-            el.children.length === 0 &&
-            !['script','style'].includes(el.tagName.toLowerCase()) &&
-            el.textContent.toLowerCase().includes(lower)
-        );
-        for (const node of leaves) {
-            // Walk up the DOM looking for a container with a "Ready" button
-            let el = node.parentElement;
-            for (let i = 0; i < 10; i++) {
+        const titles = Array.from(document.querySelectorAll('.ipc-metadata-list-summary-item__t'));
+        for (const title of titles) {
+            if (!title.textContent.toLowerCase().includes(lower)) continue;
+            let el = title.parentElement;
+            for (let i = 0; i < 12; i++) {
                 if (!el) break;
-                const btn = Array.from(el.querySelectorAll('button')).find(
-                    b => b.textContent.trim() === 'Ready'
-                );
+                const btn = el.querySelector('button[data-testid="export-status-button"]');
                 if (btn) return btn;
                 el = el.parentElement;
             }
         }
         return null;
     }""", label)
-
-    is_null = await page.evaluate("el => el === null", btn)
-    if is_null:
-        raise RuntimeError(f"Could not find 'Ready' button near '{label}' on the exports page.")
 
     print(f"  Found 'Ready' button for '{label}'")
     async with page.expect_download(timeout=60000) as dl:
@@ -117,11 +142,19 @@ async def _download_top(page, label: str, dest: Path) -> Path:
     return dest
 
 
-def download_exports() -> tuple[Path, Path]:
+def _load_cookies() -> str:
     cookies = os.environ.get("IMDB_COOKIES", "")
     if not cookies:
-        raise RuntimeError("IMDB_COOKIES env var not set. Run save_cookies.py first.")
-    return asyncio.run(_run(cookies))
+        local = Path(__file__).parent.parent / "imdb_cookies.txt"
+        if local.exists():
+            cookies = local.read_text().strip()
+    if not cookies:
+        raise RuntimeError("IMDB_COOKIES not set and imdb_cookies.txt not found. Run save_cookies.py first.")
+    return cookies
+
+
+def download_exports() -> tuple[Path, Path]:
+    return asyncio.run(_run(_load_cookies()))
 
 
 if __name__ == "__main__":
