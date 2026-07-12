@@ -41,6 +41,14 @@ def _headers(token: str, *, json: bool = True) -> dict:
     return h
 
 
+def _check(resp, what: str):
+    """Raise on error, but surface Notion's response body first (it explains 400s)."""
+    if not resp.ok:
+        print(f"  Notion API error [{what}]: {resp.status_code} :: {resp.text[:800]}")
+    resp.raise_for_status()
+    return resp
+
+
 def _upload_file(token: str, path: Path) -> str:
     """Upload a file to Notion and return its file_upload id."""
     # 1. Create the file upload object (single-part is the default mode).
@@ -88,7 +96,7 @@ def _create_row(token: str, db_id: str, date_str: str,
         json={"parent": {"database_id": db_id}, "properties": props},
         timeout=30,
     )
-    resp.raise_for_status()
+    _check(resp, "create page")
     return resp.json()["url"]
 
 
