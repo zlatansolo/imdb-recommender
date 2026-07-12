@@ -32,3 +32,8 @@ jobs:
           git diff --staged --quiet && echo "No changes." || \
             git commit -m "sync: update IMDb data $(date '+%Y-%m-%d')"
           git push
+      - name: Push snapshot to Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_SNAPSHOTS_DB_ID: ${{ vars.NOTION_SNAPSHOTS_DB_ID }}
+        run: python src/push_to_notion.py
