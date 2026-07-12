@@ -60,6 +60,28 @@ _INVENTORY_JS = """() => {
 }"""
 
 
+# One-shot page introspection used only when zero export rows are found.
+_DIAG_JS = """() => {
+    const uniq = a => Array.from(new Set(a));
+    const testids = uniq(Array.from(document.querySelectorAll('[data-testid]'))
+        .map(e => e.getAttribute('data-testid'))).slice(0, 90);
+    const exportAnchors = uniq(Array.from(document.querySelectorAll('a'))
+        .map(a => a.href).filter(h => /export|\\.csv|download/i.test(h))).slice(0, 25);
+    const buttonTexts = uniq(Array.from(document.querySelectorAll('button'))
+        .map(b => (b.textContent || '').trim()).filter(Boolean)).slice(0, 50);
+    return {
+        counts: {
+            li: document.querySelectorAll('li').length,
+            summaryItem: document.querySelectorAll('.ipc-metadata-list-summary-item').length,
+            buttons: document.querySelectorAll('button').length,
+            anchors: document.querySelectorAll('a').length,
+        },
+        testids, exportAnchors, buttonTexts,
+        bodyText: (document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').trim().slice(0, 1200),
+    };
+}"""
+
+
 async def _run(cookies_b64: str) -> tuple[Path, Path]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -112,10 +134,18 @@ async def _run(cookies_b64: str) -> tuple[Path, Path]:
             print(f"  [{i}] {'READY ' if r['ready'] else 'BUSY  '}"
                   f"status={r['statusText']!r} :: {r['text']!r}")
         if not rows:
+            diag = await page.evaluate(_DIAG_JS)
+            print("── DIAGNOSTIC DUMP (0 export rows) ─────────────────────────────")
+            print("counts:", diag["counts"])
+            print("data-testids present:", diag["testids"])
+            print("button texts:", diag["buttonTexts"])
+            print("export/csv anchors:", diag["exportAnchors"])
+            print("body text (1.2k):", diag["bodyText"])
+            print("────────────────────────────────────────────────────────────────")
             raise RuntimeError(
-                "No export rows found on the exports page. IMDb markup may have changed, "
-                "or no exports exist yet (run trigger_exports.py first). "
-                "See the inventory above (empty)."
+                "No export rows found on the exports page. See the diagnostic dump above "
+                "to tell 'markup changed' (testids/anchors present) from 'no exports yet' "
+                "(empty state text)."
             )
 
         ratings_path = await _download_kind(page, rows, "ratings", DATA_DIR / "ratings.csv")
