@@ -121,7 +121,8 @@ def push_to_notion(dry_run: bool = False) -> None:
         print("NOTION_TOKEN not set — skipping Notion push "
               "(add the secret to enable it). Data was still committed to the repo.")
         return
-    db_id = os.environ.get("NOTION_SNAPSHOTS_DB_ID", DEFAULT_DB_ID)
+    # `or` (not get's default) so an empty env value from an unset repo var falls back.
+    db_id = os.environ.get("NOTION_SNAPSHOTS_DB_ID") or DEFAULT_DB_ID
 
     print("Uploading CSVs to Notion…")
     ratings_upload = _upload_file(token, ratings_csv)
