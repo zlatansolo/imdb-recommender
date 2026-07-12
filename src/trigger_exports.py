@@ -45,18 +45,22 @@ _VISIBLE_ITEMS_JS = r"""() => {
     return out.slice(0, 40);
 }"""
 
-# Click the first VISIBLE element whose text starts with the given word. Returns its text or null.
+# Click the VISIBLE clickable whose label matches `word`. Prefers an EXACT
+# (case-insensitive) match on a real menu item/button/link — this avoids grabbing
+# a container whose text concatenates sibling items (e.g. "ExportCreate a new list").
 _CLICK_BY_TEXT_JS = r"""(word) => {
-    const re = new RegExp('^\\s*' + word, 'i');
+    const w = word.toLowerCase();
     const vis = el => el && el.offsetParent !== null && el.getClientRects().length > 0;
-    const nodes = Array.from(document.querySelectorAll(
-        '[role="menuitem"], [role="dialog"] button, [role="menu"] *, a, button, li, span, div'));
-    for (const el of nodes) {
+    const clickable = Array.from(document.querySelectorAll(
+        '[role="menuitem"], [role="button"], a, button')).filter(vis);
+    // 1) exact leaf match
+    for (const el of clickable) {
+        if ((el.textContent || '').trim().toLowerCase() === w) { el.click(); return el.textContent.trim(); }
+    }
+    // 2) short startsWith (leaf-ish, so "Export" but not "ExportCreate a new list")
+    for (const el of clickable) {
         const t = (el.textContent || '').trim();
-        if (re.test(t) && t.length < 40 && vis(el)) {
-            (el.closest('a,button,[role="menuitem"]') || el).click();
-            return t;
-        }
+        if (t.toLowerCase().startsWith(w) && t.length <= word.length + 4) { el.click(); return t; }
     }
     return null;
 }"""
